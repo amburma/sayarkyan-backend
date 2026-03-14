@@ -19,10 +19,10 @@ app.post('/api/chat', async (req, res) => {
     try {
         const { message, history } = req.body;
 
-        // 404 ကို ကျော်လွှားရန် ပိုမိုတည်ငြိမ်သော gemini-pro ကို သုံးကြည့်ပါမည်
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        // 404 Error ကို ကျော်လွှားနိုင်ရန် Stable ဖြစ်သော gemini-1.0-pro ကို သတ်မှတ်သုံးစွဲခြင်း
+        const model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" });
 
-        // System Instruction ကို History ရဲ့ အစမှာ အတင်းထည့်ပေးခြင်း
+        // System Instruction ကို History ထဲတွင် တိုက်ရိုက်ထည့်သွင်းခြင်း (Compatibility Mode)
         const chatHistory = [
             { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
             { role: "model", parts: [{ text: "ဟုတ်ကဲ့၊ ကျွန်တော် ဆရာကျန်းပါ။ ဘာကူညီပေးရမလဲခင်ဗျာ။" }] },
@@ -41,7 +41,7 @@ app.post('/api/chat', async (req, res) => {
         const response = await result.response;
         let responseText = response.text();
         
-        // JSON မဟုတ်သော စာသားများ (```json) ပါလာပါက ဖယ်ထုတ်ခြင်း
+        // Markdown format များ ပါလာပါက ဖယ်ထုတ်၍ JSON သန့်စင်ခြင်း
         const cleanJson = responseText.replace(/```json|```/g, "").trim();
         res.json(JSON.parse(cleanJson));
 
