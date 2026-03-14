@@ -1,62 +1,55 @@
 const express = require('express');
 const cors = require('cors');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const axios = require('axios'); // SDK အစား axios ကို သုံးပါမည်
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const API_KEY = process.env.GEMINI_API_KEY;
+const MODEL_NAME = "gemini-1.5-flash"; // အသစ်ဆုံးကို ပြန်သုံးပါမည်
 
-const SYSTEM_PROMPT = `You are "Sayar Kyan" (ဆရာကျန်း), a professional medical AI. 
-Rules: 
-1. Ask ONE Burmese question at a time. 
-2. Response must be raw JSON.
-JSON Format: {"ui_color": "...", "response_text": "...", "clinical_summary": "...", "disclaimer": "..."}`;
+const SYSTEM_PROMPT = `You are "Sayar Kyan" (ဆရာကျန်း), a medical AI. Ask ONE Burmese question at a time. Respond ONLY in raw JSON: {"ui_color": "...", "response_text": "...", "clinical_summary": "...", "disclaimer": "..."}`;
 
 app.post('/api/chat', async (req, res) => {
     try {
         const { message, history } = req.body;
 
-        // 404 Error ကို ကျော်လွှားနိုင်ရန် Stable ဖြစ်သော gemini-1.0-pro ကို သတ်မှတ်သုံးစွဲခြင်း
-        const model = genAI.getGenerativeModel({ model: "gemini-1.0-pro" });
+        // Gemini API သို့ တိုက်ရိုက်လှမ်းခေါ်မည့် URL
+        const url = `https://generativelanguage.googleapis.com/v1/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
 
-        // System Instruction ကို History ထဲတွင် တိုက်ရိုက်ထည့်သွင်းခြင်း (Compatibility Mode)
-        const chatHistory = [
+        // History ကို API format သို့ ပြောင်းလဲခြင်း
+        const contents = [
             { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-            { role: "model", parts: [{ text: "ဟုတ်ကဲ့၊ ကျွန်တော် ဆရာကျန်းပါ။ ဘာကူညီပေးရမလဲခင်ဗျာ။" }] },
-            ...(history || [])
+            { role: "model", parts: [{ text: "{\"response_text\": \"ဟုတ်ကဲ့၊ ကျွန်တော် ဆရာကျန်းပါ။ ဘာကူညီပေးရမလဲခင်ဗျာ။\"}" }] },
+            ...(history || []).map(h => ({
+                role: h.role,
+                parts: [{ text: typeof h.parts[0].text === 'string' ? h.parts[0].text : JSON.stringify(h.parts[0].text) }]
+            })),
+            { role: "user", parts: [{ text: message }] }
         ];
 
-        const chat = model.startChat({
-            history: chatHistory,
-            generationConfig: { 
-                temperature: 0.7,
-                maxOutputTokens: 1000,
+        const response = await axios.post(url, {
+            contents: contents,
+            generationConfig: {
+                responseMimeType: "application/json",
+                temperature: 0.7
             }
         });
 
-        const result = await chat.sendMessage(message);
-        const response = await result.response;
-        let responseText = response.text();
-        
-        // Markdown format များ ပါလာပါက ဖယ်ထုတ်၍ JSON သန့်စင်ခြင်း
-        const cleanJson = responseText.replace(/```json|```/g, "").trim();
-        res.json(JSON.parse(cleanJson));
+        const responseText = response.data.candidates[0].content.parts[0].text;
+        res.json(JSON.parse(responseText));
 
     } catch (error) {
-        console.error("--- DEBUG ERROR ---");
-        console.error(error.message);
-        
+        console.error("DIRECT API ERROR:", error.response ? error.response.data : error.message);
         res.status(500).json({ 
             ui_color: "warning_red",
-            response_text: "ဆာဗာ ချိတ်ဆက်မှု အခက်အခဲရှိနေပါသည်။ ခဏနေမှ ပြန်စမ်းကြည့်ပါ။",
-            clinical_summary: "Error: " + error.message,
-            disclaimer: "AI စနစ် ချို့ယွင်းနေပါသည်။"
+            response_text: "API ချိတ်ဆက်မှု အဆင်မပြေပါ။",
+            clinical_summary: "Error: " + (error.response?.data?.error?.message || error.message)
         });
     }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Backend running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Backend is running on port ${PORT}`));
