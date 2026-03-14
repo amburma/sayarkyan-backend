@@ -8,37 +8,20 @@ app.use(cors());
 app.use(express.json());
 
 const API_KEY = process.env.GEMINI_API_KEY;
-// gemini-1.5-flash သို့မဟုတ် gemini-pro ကို သုံးနိုင်ပါသည်
-const MODEL_NAME = "gemini-1.5-flash"; 
-
-const SYSTEM_PROMPT = `You are "Sayar Kyan" (ဆရာကျန်း), a medical AI. Respond ONLY in Burmese. Ask ONE question at a time. Format your output as a valid JSON object only.
-JSON example: {"ui_color": "soft_green", "response_text": "...", "clinical_summary": "...", "disclaimer": "..."}`;
 
 app.post('/api/chat', async (req, res) => {
     try {
-        const { message, history } = req.body;
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
+        const { message } = req.body;
+        // အရှင်းဆုံး URL နှင့် v1 ကို သုံးထားပါသည်
+        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
-        // Payload ကို ပိုမိုရိုးရှင်းအောင် ပြုပြင်ထားသည်
-        const contents = [
-            { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-            { role: "model", parts: [{ text: "{\"response_text\": \"ဟုတ်ကဲ့၊ ကျွန်တော် ဆရာကျန်းပါ။ ဘာများကူညီပေးရမလဲခင်ဗျာ။\"}" }] },
-            ...(history || []).map(h => ({
-                role: h.role === 'model' ? 'model' : 'user',
-                parts: [{ text: typeof h.parts[0].text === 'string' ? h.parts[0].text : JSON.stringify(h.parts[0].text) }]
-            })),
-            { role: "user", parts: [{ text: message }] }
-        ];
+        const payload = {
+            contents: [{
+                parts: [{ text: `You are a medical AI. Respond only in Burmese and return ONLY a JSON object: {"response_text": "...", "ui_color": "soft_green"}. User says: ${message}` }]
+            }]
+        };
 
-        const response = await axios.post(url, {
-            contents: contents,
-            generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 1000
-                // responseMimeType ကို ဖယ်ထုတ်ထားပါသည် (Error တက်ခြင်းမှ ကာကွယ်ရန်)
-            }
-        });
-
+        const response = await axios.post(url, payload);
         const responseText = response.data.candidates[0].content.parts[0].text;
         
         // JSON သန့်စင်ခြင်း
@@ -46,14 +29,13 @@ app.post('/api/chat', async (req, res) => {
         res.json(JSON.parse(cleanJson));
 
     } catch (error) {
-        console.error("DEBUG ERROR DETAILS:", error.response ? JSON.stringify(error.response.data) : error.message);
+        console.error("DEBUG:", error.response ? error.response.data : error.message);
         res.status(500).json({ 
-            ui_color: "warning_red",
-            response_text: "ဆာဗာ ချိတ်ဆက်မှု အခက်အခဲရှိနေပါသည်။",
-            clinical_summary: "Error: " + (error.response?.data?.error?.message || error.message)
+            response_text: "ခေတ္တ စောင့်ဆိုင်းပေးပါ။ ဆာဗာ ပြန်တက်လာပါပြီ။",
+            ui_color: "warning_red"
         });
     }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server is Live on Port ${PORT}`));
+app.listen(PORT, () => console.log(`Stable Backend on ${PORT}`));
